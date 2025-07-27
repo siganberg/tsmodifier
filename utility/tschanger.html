@@ -277,7 +277,12 @@
                 for (const line of lines) {
                     const trimmedLine = line.trim();
 
-                    // Insert before commands for lines containing M6 or M98
+                    //-- Ignore lines
+                    if (line.includes('Modified by ToolChange Modifier')) {
+                        continue;
+                    }
+
+                    //-- Insert before commands for lines containing M6 or M98
                     if (line.includes("M6") || line.includes("M98") || line.includes("M06")) {
                         if (beforeCommands.length) {
                             modifiedLines.push(...beforeCommands);
@@ -285,7 +290,7 @@
                         toolChangePending = true; // Flag to look for next G0/G00
                     }
 
-                    // Skip lines that match beforeCommands or afterCommands if respective ignore option is checked
+                    //-- Skip lines that match beforeCommands or afterCommands if respective ignore option is checked
                     let skipLine = false;
                     const normalizedLine = convertMCode(trimmedLine);
 
