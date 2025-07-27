@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ToolChange Modifier</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Arial, sans-serif;
+            background-color: #f4f7fa;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+            max-width: 500px;
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        h1 {
+            font-size: 24px;
+            color: #333;
+            text-align: center;
+            margin: 0 0 20px;
+        }
+        .description {
+            font-size: 14px;
+            color: #666;
+            text-align: justify;
+            margin: 0 0 0px;
+        }
+        .input-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        label {
+            font-size: 14px;
+            color: #555;
+            font-weight: 500;
+        }
+        .instructions {
+            font-size: 12px;
+            color: #777;
+            margin-top: 4px;
+        }
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 14px;
+            color: #555;
+        }
+        input[type="text"], input[type="file"] {
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: border-color 0.3s;
+        }
+        input[type="text"]:focus, input[type="file"]:focus {
+            border-color: #007bff;
+            outline: none;
+        }
+        input[type="file"] {
+            padding: 10px;
+        }
+        .drag-drop-zone {
+            border: 2px dashed #ccc;
+            border-radius: 8px;
+            padding: 20px;
+            text-align: center;
+            background: #fafafa;
+            transition: all 0.3s;
+            cursor: pointer;
+        }
+        .drag-drop-zone.dragover {
+            background: #e6f3ff;
+            border-color: #007bff;
+        }
+        .drag-drop-zone p {
+            margin: 0;
+            color: #666;
+            font-size: 16px;
+        }
+        button {
+            padding: 12px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        #status {
+            text-align: center;
+            font-size: 14px;
+            padding: 10px;
+            border-radius: 8px;
+        }
+        .error {
+            background: #ffe6e6;
+            color: #d32f2f;
+        }
+        .success {
+            background: #e6ffed;
+            color: #2e7d32;
+        }
+        input::placeholder {
+            color: #999;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧰  ToolChange Modifier</h1>
+        <div class="description">
+            This tool modifies G-code files (.ngc, .nc) by inserting user-specified commands before and after tool change commands (M6 or M98). "Before Tool Change" commands are inserted immediately before lines containing M6 or M98. "After Tool Change" commands are inserted after the first G0 or G00 with X and Y coordinates following a line with M6 or M98. The new modified file is saved with "_modified".
+        </div>
+        <div class="description">
+            Useful for AutoDustBoot to insert specific command that trigger retract or expansion of the AutoDustBoot. For example, if you are using M8/M9 command to expand or retract this the AutoDustBoot, this will insert this commands on the most ideal area to minimize collision.
+        </div>
+        <div class="input-group">
+            <label for="gcodeFile">Select or Drag G-code File (.ngc, .nc)</label>
+            <input type="file" id="gcodeFile" accept=".ngc,.nc">
+            <div class="drag-drop-zone" id="dragDropZone">
+                <p>Drag and drop your .ngc or .nc file here</p>
+            </div>
+        </div>
+        <div class="input-group">
+            <label for="beforeToolChange">Before Tool Change Command</label>
+            <input type="text" id="beforeToolChange" placeholder="e.g., M9">
+            <div class="instructions">Enter multiple commands separated by commas (e.g., M9, G4 P0.5).</div>
+            <div class="checkbox-group">
+                <input type="checkbox" id="ignoreBeforeMatches">
+                <label for="ignoreBeforeMatches">Ignore existing matching commands in file</label>
+            </div>
+        </div>
+        <div class="input-group">
+            <label for="afterToolChange">After Tool Change Command</label>
+            <input type="text" id="afterToolChange" value="M8, G4 P1" placeholder="e.g., M8, G4 P1">
+            <div class="instructions">Enter multiple commands separated by commas (e.g., M8, G43 H1).</div>
+            <div class="checkbox-group">
+                <input type="checkbox" id="ignoreAfterMatches">
+                <label for="ignoreAfterMatches">Ignore existing matching commands in file</label>
+            </div>
+        </div>
+        <button onclick="generateFile()">Generate Modified File</button>
+        <div id="status"></div>
+        <div style="text-align:center; font-size:12px; color:#999; margin-top:5px;">
+            Version <span id="versionDisplay" style="text-align:center; font-size:12px; color:#999; margin-top:10px;"></span> | Last Modified: 2024-07-21
+        </div>
+    </div>
+
+    <script>
+
+        const TOOL_VERSION = "1.0.003";
+
+        const dragDropZone = document.getElementById('dragDropZone');
+        const fileInput = document.getElementById('gcodeFile');
+        const beforeToolChangeInput = document.getElementById('beforeToolChange');
+        const afterToolChangeInput = document.getElementById('afterToolChange');
+        const ignoreBeforeMatchesCheckbox = document.getElementById('ignoreBeforeMatches');
+        const ignoreAfterMatchesCheckbox = document.getElementById('ignoreAfterMatches');
+
+        // Load saved commands and checkbox states from localStorage
+        window.addEventListener('load', () => {
+            const savedBeforeCommands = localStorage.getItem('beforeToolChange');
+            const savedAfterCommands = localStorage.getItem('afterToolChange');
+            const savedIgnoreBefore = localStorage.getItem('ignoreBeforeMatches');
+            const savedIgnoreAfter = localStorage.getItem('ignoreAfterMatches');
+
+            document.getElementById('versionDisplay').textContent = `Version ${TOOL_VERSION}`;
+
+            if (savedBeforeCommands) {
+                beforeToolChangeInput.value = savedBeforeCommands;
+            }
+            if (savedAfterCommands) {
+                afterToolChangeInput.value = savedAfterCommands;
+            } else {
+                afterToolChangeInput.value = 'M8, G4 P1'; // Default if no saved value
+            }
+            ignoreBeforeMatchesCheckbox.checked = savedIgnoreBefore === 'true';
+            ignoreAfterMatchesCheckbox.checked = savedIgnoreAfter === 'true';
+        });
+
+        // Save commands and checkbox states to localStorage on input change
+        beforeToolChangeInput.addEventListener('input', () => {
+            localStorage.setItem('beforeToolChange', beforeToolChangeInput.value.trim());
+        });
+
+        afterToolChangeInput.addEventListener('input', () => {
+            localStorage.setItem('afterToolChange', afterToolChangeInput.value.trim());
+        });
+
+        ignoreBeforeMatchesCheckbox.addEventListener('change', () => {
+            localStorage.setItem('ignoreBeforeMatches', ignoreBeforeMatchesCheckbox.checked);
+        });
+
+        ignoreAfterMatchesCheckbox.addEventListener('change', () => {
+            localStorage.setItem('ignoreAfterMatches', ignoreAfterMatchesCheckbox.checked);
+        });
+
+        // Drag and drop event listeners
+        dragDropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dragDropZone.classList.add('dragover');
+        });
+
+        dragDropZone.addEventListener('dragleave', () => {
+            dragDropZone.classList.remove('dragover');
+        });
+
+        dragDropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dragDropZone.classList.remove('dragover');
+            const files = e.dataTransfer.files;
+            if (files.length && (files[0].name.endsWith('.ngc') || files[0].name.endsWith('.nc'))) {
+                fileInput.files = files;
+                updateStatus('File loaded successfully.', 'success');
+            } else {
+                updateStatus('Please drop a .ngc or .nc file.', 'error');
+            }
+        });
+
+        // Allow clicking the drag-drop zone to trigger file input
+        dragDropZone.addEventListener('click', () => {
+            fileInput.click();
+        });
+
+        async function generateFile() {
+            try {
+                const fileInput = document.getElementById('gcodeFile');
+                const beforeCommandInput = document.getElementById('beforeToolChange').value.trim();
+                const afterCommandInput = document.getElementById('afterToolChange').value.trim();
+                const ignoreBeforeMatches = document.getElementById('ignoreBeforeMatches').checked;
+                const ignoreAfterMatches = document.getElementById('ignoreAfterMatches').checked;
+
+                // Validate inputs
+                if (!fileInput.files.length) {
+                    updateStatus('Please select or drop a G-code file.', 'error');
+                    return;
+                }
+                if (!beforeCommandInput && !afterCommandInput) {
+                    updateStatus('Please enter at least one G-code command to insert.', 'error');
+                    return;
+                }
+
+                // Split commands by comma and trim whitespace
+                const beforeCommands = beforeCommandInput ? beforeCommandInput.split(',').map(cmd => cmd.trim()).filter(cmd => cmd) : [];
+                const afterCommands = afterCommandInput ? afterCommandInput.split(',').map(cmd => cmd.trim()).filter(cmd => cmd) : [];
+
+                // Read the selected file
+                const file = fileInput.files[0];
+                const text = await file.text();
+
+                // Process the G-code
+                const lines = text.split('\n');
+                const modifiedLines = [];
+                let toolChangePending = false;
+
+                modifiedLines.push(`; Modified by ToolChange Modifier Version ${TOOL_VERSION}`);
+
+                for (const line of lines) {
+                    const trimmedLine = line.trim();
+
+                    // Insert before commands for lines containing M6 or M98
+                    if (line.includes("M6") || line.includes("M98") || line.includes("M06")) {
+                        if (beforeCommands.length) {
+                            modifiedLines.push(...beforeCommands);
+                        }
+                        toolChangePending = true; // Flag to look for next G0/G00
+                    }
+
+                    // Skip lines that match beforeCommands or afterCommands if respective ignore option is checked
+                    let skipLine = false;
+                    const normalizedLine = convertMCode(trimmedLine);
+
+                    if (ignoreBeforeMatches && beforeCommands.length && beforeCommands.includes(normalizedLine)) {
+                        skipLine = true;
+                    }
+
+
+                    if (ignoreAfterMatches && afterCommands.length && afterCommands.includes(normalizedLine)) {
+                        skipLine = true;
+                    }
+
+                    if (!skipLine) {
+                        modifiedLines.push(line);
+                    }
+
+                    // Insert after commands on the first G0/G00 with X and Y coordinates
+                    if (toolChangePending && (trimmedLine.includes('G0 ') || trimmedLine.includes('G00 '))) {
+                        const hasXY = /X-?\d+\.?\d*/i.test(trimmedLine) && /Y-?\d+\.?\d*/i.test(trimmedLine);
+                        if (hasXY && afterCommands.length) {
+                            modifiedLines.push(...afterCommands);
+                            toolChangePending = false; // Reset flag after inserting
+                        }
+                    }
+                }
+
+                const modifiedText = modifiedLines.join('\n');
+
+                // Create a new file name
+                const originalName = file.name;
+                const extension = originalName.substring(originalName.lastIndexOf('.'));
+                const newFileName = originalName.replace(extension, '_modified' + extension);
+
+                // Save the modified file
+                if ('showSaveFilePicker' in window) {
+                    // Chrome and compatible
+                    const newFileHandle = await window.showSaveFilePicker({
+                        suggestedName: newFileName,
+                        types: [
+                            {
+                                description: 'G-code Files',
+                                accept: {
+                                    'text/plain': ['.ngc', '.nc']
+                                }
+                            }
+                        ]
+                    });
+
+                    const writable = await newFileHandle.createWritable();
+                    await writable.write(modifiedText);
+                    await writable.close();
+                    updateStatus(`Modified file saved as ${newFileName}`, 'success');
+                } else {
+                    // Safari and other unsupported browsers fallback
+                    const blob = new Blob([modifiedText], { type: 'text/plain' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = newFileName;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                    updateStatus(`Modified file downloaded as ${newFileName}`, 'success');
+                }
+            } catch (error) {
+                if (error.name === 'AbortError') {
+                    updateStatus('File selection or save was cancelled.', 'error');
+                } else {
+                    updateStatus(`Error: ${error.message}`, 'error');
+                }
+            }
+        }
+
+        function updateStatus(message, type) {
+            const statusDiv = document.getElementById('status');
+            statusDiv.textContent = message;
+            statusDiv.className = type;
+        }
+
+        function convertMCode(input) {
+            const match = input.match(/M0?(\d)/);
+            if (match) {
+                return `M${match[1]}`; // Return M followed by the captured digit
+            }
+            return null; // Return null if no valid M code is found
+        }
+
+    </script>
+</body>
+</html>
