@@ -1,6 +1,6 @@
 # ToolChange Modifier
 
-A lightweight tool that modifies G-code files by inserting custom commands before or after each ToolChange command like `M6` or `M98`. Useful for smarter way to retract/expand AutoDustBoot. Just open the file utility/tsmodifier.html on Chrome browser.
+A lightweight tool that modifies G-code files by inserting custom commands before or after each ToolChange command like `M6` or `M98`. Useful for smarter way to retract/expand AutoDustBoot. Just open the file utility/tschanger.html on Chrome browser.
 
 ---
 
